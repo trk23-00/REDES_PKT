@@ -1,21 +1,22 @@
-> PARA pos.csv(subir imagen de topologia):
+> PARA pos.csv(imagen 1):
 segun esta imagen, quiero que generes una lista en formato csv, con formato: <nombre dispositivo>,<pos x>, <pos y> esto es para cisco packet tracer, asi que toma en cuenta eso para asignar las posiciones de modo que no se sobrepongan, al final las posiciones deben formar la misma que de la imagen
 
-
-
-> PARA ips.csv(subir imagen de topologia) (solo formato por tablas):
+> PARA ips.csv(imagen 2) (solo formato por tablas):
 extrae las ips de esta imagen y lo indiques en un csv, formato:
-- (nombre_device,ip,msk).
-La imagen muestra una tabla donde un elemento puede ocupar todo el espacio de una columna desde una fila a otra, significa que este elemento se repite en todos las filas, x es un valor valido para las ips
+- <nombre_device>,<ip.>,<msk> (en decimal ej /10).
+La imagen muestra una tabla donde un elemento puede ocupar todo el espacio de una columna desde una fila a otra, significa que este elemento se repite en todos las filas, donde veas una X reemplazas con el numero 67
 
-
-> PARA conexiones.csv(subir imagen de topologia):
+> PARA conexiones.csv(imagen 1):
 segun la imagen quiero que generes un csv que indique las conexiones entre los dispositivos, con el siguiente formato: 
-- PCA:pc,c,SWA:sw 
-donde (nombre_device1, tipo_device1, tipo_cable,nombre_device2, tipo_device2).
+-  <nombre_device1>:< tipo_device1>,<tipo_cable>,<nombre_device2>:< tipo_device2>
+- Ejemplo: PC1:pc,c,SW2:sw
 los cables que existen son: 
 - cs: cobre segmentado
 - (cruzado) c: cobre
 - s: serial
 no omitas la existencia de 'cobre segmentado' de existir, debes indicarlo.
- 
+los tipo device son:
+- r: Router
+- sw: Switch
+- pc: PC 
+- srv: Servidor

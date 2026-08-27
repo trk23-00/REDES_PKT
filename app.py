@@ -81,7 +81,7 @@ class General_Core:
 
     def aplicar_protocolos(self):
         self.calcular_ramas()
-        pprint.pprint(self.dic_protocolo_aux)
+        # pprint.pprint(self.dic_protocolo_aux)
         self.dic_router_protocolo = self.cal_redes.calcular_protocolos(self.dic_protocolo_aux, self.grafo_general.grafo)
         # pprint.pprint(self.dic_router_protocolo)
         
@@ -113,6 +113,7 @@ class General_Core:
         dic_all_atributes["links"] = lista_links
         if self.generador_topologia == None:
             self.generador_topologia = Gen_xml(dic_all_atributes,self.dic_router_protocolo,self.ruta)
+        pprint.pprint(dic_all_atributes)
         self.generador_topologia.generar()
         return dic_all_atributes
 ##
