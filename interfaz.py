@@ -6,7 +6,7 @@ from UI.main_window import MainWindow
 def main():
     app = QApplication(sys.argv)
     w = MainWindow()
-    w.resize(620, 500)
+    w.resize(1240, 860)
     w.show()
     sys.exit(app.exec())
 

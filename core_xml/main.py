@@ -1,5 +1,7 @@
 import re
 import random
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from core_xml.generadores.generarMac import generar_mac, mac_a_ipv6_link_local
 from core_xml.generadores.generarPartialDuuid import generar_partial_duid
 from core_xml.generadores.generarRefId import generar_save_ref_id
@@ -54,7 +56,7 @@ class GeneradorTopologia:
         }
 
         for k, v in archivos.items():
-            with open(f"{self.ruta}/core_xml/templates/{v}") as f:
+            with open(f"{self.ruta}/core_xml/templates/{v}", encoding="utf-8") as f:
                 t[k] = f.read()
         return t
 
@@ -348,6 +350,7 @@ class GeneradorTopologia:
             return (
                 "<LINE>interface Vlan1</LINE>\n"
                 f"      <LINE> ip address {ip} {mask}</LINE>\n"
+                "      <LINE> no shutdown</LINE>\n"
                 "      <LINE>!</LINE>\n"
                 f"      <LINE>ip default-gateway {gw}</LINE>\n"
                 "      <LINE>!</LINE>\n"
@@ -370,7 +373,11 @@ class GeneradorTopologia:
         for port, data in (router.get("interfaz") or {}).items():
             # interfaz física
             texto += f"      <LINE>interface {port}</LINE>\n"
-            texto += f"      <LINE> ip address {data[0][1]} {data[0][2]}</LINE>\n"
+            if data[0][1]:
+                texto += f"      <LINE> ip address {data[0][1]} {data[0][2]}</LINE>\n"
+                texto += "      <LINE> no shutdown</LINE>\n"
+            else:
+                texto += "      <LINE> no ip address</LINE>\n"
             if "GigabitEthernet" in port:
                 texto += "      <LINE> duplex auto</LINE>\n"
                 texto += "      <LINE> speed auto</LINE>\n"
@@ -385,6 +392,7 @@ class GeneradorTopologia:
                 texto += f"      <LINE>interface {port}.{vid}</LINE>\n"
                 texto += f"      <LINE> encapsulation dot1Q {vid}</LINE>\n"
                 texto += f"      <LINE> ip address {gw} {mask}</LINE>\n"
+                texto += "      <LINE> no shutdown</LINE>\n"
                 texto += "      <LINE>!</LINE>\n"
         return texto
     def generar_interfaces_router(self, router):
@@ -527,7 +535,7 @@ class GeneradorTopologia:
     # =====================================================
     # FINAL
     # =====================================================
-    def generar(self):
+    def generar(self, output_path=None):
         # crear dispositivos
         self.crear_pcs()
         self.crear_srv()
@@ -555,11 +563,14 @@ class GeneradorTopologia:
             nodes_rack=xml_nodes_rack,
             scenarios="\n".join(scenarios)
         )
-        with open(f"{self.ruta}/topologia.xml", "w") as f:
-            f.write(xml)
-        print("XML generado correctamente")
-        xml_a_pkt(f"{self.ruta}/topologia.xml", f"{self.ruta}/topologia.pkt")
-        return "topologia generada"
+        destination = Path(output_path or f"{self.ruta}/topologia.pkt")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory() as folder:
+            xml_path = Path(folder) / 'topologia.xml'
+            xml_path.write_text(xml, encoding='utf-8')
+            if not xml_a_pkt(str(xml_path), str(destination)):
+                raise OSError('No se pudo guardar el archivo PKT.')
+        return str(destination)
 
 # datos = {
 #     "pcs": [

@@ -111,8 +111,7 @@ class General_Core:
             i1,cable, i2 = info
             lista_links.append({"from": d1, "to": d2, "from_port": i1, "to_port": i2, "tipo": cable})
         dic_all_atributes["links"] = lista_links
-        if self.generador_topologia == None:
-            self.generador_topologia = Gen_xml(dic_all_atributes,self.dic_router_protocolo,self.ruta)
+        self.generador_topologia = Gen_xml(dic_all_atributes,self.dic_router_protocolo,self.ruta)
         pprint.pprint(dic_all_atributes)
         self.generador_topologia.generar()
         return dic_all_atributes
@@ -132,7 +131,7 @@ print("EDGES")
 for i in grafo_g.grafo.edges:
     print(i)
 """
-print("####################")
+# Legacy examples below are intentionally not executed on import.
 
 """for i in calA.dic_edges.items():
     print(i)

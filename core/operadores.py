@@ -272,7 +272,7 @@ class Operador_nets:
                         
 
     def calcular_protocolos(self,dic,grafo):
-        dic_datos = {}
+        dic_datos = {}      
         for protocolo, lista in dic.items():
             for router in lista:
                 objeto = self.dic_device_objeto[router]

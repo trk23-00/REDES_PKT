@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import networkx as nx
 from core.devices import(
     Device_pc as D_pc,
@@ -40,6 +39,7 @@ class Grafo_red:
             self.grafo.add_edge(edge[0], edge[1], data =dic)
     
     def graficar(self):
+        import matplotlib.pyplot as plt
         pos = nx.spring_layout(self.grafo)
         nx.draw(self.grafo, pos, with_labels=True)
         plt.show()
