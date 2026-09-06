@@ -7,37 +7,21 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
-def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="data"):
-    """
-    Lee las dos imágenes, realiza la petición a Gemini y guarda los CSV en la carpeta 'data'.
-    Aplica una estrategia de modelos de respaldo (fallback) en caso de saturación (503).
-    """
+def procesar_topologia_red(ruta_img_topologia, carpeta_destino="data"):
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("No se encontró GEMINI_API_KEY. Revisa tu archivo .env en la raíz del proyecto.")
     client = genai.Client(api_key=api_key)
-
     if not os.path.exists(ruta_img_topologia):
         raise FileNotFoundError(f"No se encontró la imagen de topología en: {ruta_img_topologia}")
-    if not os.path.exists(ruta_img_tabla):
-        raise FileNotFoundError(f"No se encontró la imagen de tabla en: {ruta_img_tabla}")
-
     img_topologia = Image.open(ruta_img_topologia)
-    img_tabla = Image.open(ruta_img_tabla)
-
     prompt = """
-    Analiza las dos imágenes adjuntas (1: topología de red, 2: tabla de IPs) y genera 3 archivos CSV.
-
+    Analiza la imagen adjunta de la topología de red y genera 2 archivos CSV.
     Usa exactamente este formato de encabezados con bloques de código Markdown:
-
     ### ARCHIVO: pos.csv
     <nombre_dispositivo>,<pos_x>,<pos_y>
-    Asigna posiciones estimadas para formar la misma estructura de la imagen en X e Y para Cisco Packet Tracer de modo que no se sobrepongan.
-
-    ### ARCHIVO: ips.csv
-    <nombre_device>,<ip>,<msk>
-    Toma en cuenta que elementos que abarcan varias filas se repiten en cada una. Reemplaza 'X' por el numero 67, en msk usa '/' antes del numero y verifica la tabla para estos valores, no uses /24 en todo
+    Asigna posiciones estimadas para formar la misma estructura de la imagen en X e Y para Cisco Packet Tracer de modo que no se sobrepongan entre dispositivos y tengan una separacion aceptable. Minimamente deben estar distribuidos desde la posicion (100,100) hacia adelante, sin tener posiciones negativas
 
     ### ARCHIVO: conexiones.csv
     <nombre_device1>:<tipo_device1>,<tipo_cable>,<nombre_device2>:<tipo_device2>
@@ -45,7 +29,7 @@ def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="
     - cs: cobre segmentado (líneas punteadas entre switches)
     - c: cobre (línea sólida)
     - s: serial (entre routers)
-    Tipos de dispositivo: r (router), sw (switch), pc (PC), srv(Servidor).
+    Tipos de dispositivo: r (router), sw (switch o hubs), pc (PC), srv (Servidor).
 
     Genera ÚNICAMENTE los bloques de código CSV sin texto explicativo.
     """
@@ -55,11 +39,13 @@ def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="
         max_output_tokens=16384
     )
 
-    # Lista de modelos en orden de preferencia (Estrategia Fallback)
     modelos_a_probar = [
         "gemini-3.5-flash-lite",
         "gemini-3.5-flash",
-        "gemini-3.1-flash-lite"
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
     ]
 
     response = None
@@ -69,7 +55,7 @@ def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="
             print(f"Intentando enviar solicitud a la API con el modelo: {modelo}...")
             response = client.models.generate_content(
                 model=modelo,
-                contents=[img_topologia, img_tabla, prompt],
+                contents=[img_topologia, prompt],
                 config=config
             )
             print(f"Respuesta recibida exitosamente con {modelo}")
@@ -94,7 +80,7 @@ def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="
     if not bloques:
         patron_alt = r"```(?:csv)?\n(.*?)```"
         bloques_raw = re.findall(patron_alt, response.text, re.DOTALL)
-        nombres = ["pos.csv", "ips.csv", "conexiones.csv"]
+        nombres = ["pos.csv", "conexiones.csv"]
         bloques = list(zip(nombres, bloques_raw))
 
     archivos_generados = []
@@ -113,17 +99,14 @@ def procesar_topologia_red(ruta_img_topologia, ruta_img_tabla, carpeta_destino="
 
     return archivos_generados
 
+
 if __name__ == "__main__":
-    print("[MODO PRUEBA] Ejecutando procesador.py directamente...")
-
+    print("MODO PRUEBA")
     ruta_topologia = os.path.join("imagenes", "topologia.png")
-    ruta_tabla = os.path.join("imagenes", "tabla_ips.jpg")
     carpeta_salida = "data"
-
     try:
         archivos = procesar_topologia_red(
             ruta_img_topologia=ruta_topologia,
-            ruta_img_tabla=ruta_tabla,
             carpeta_destino=carpeta_salida
         )
         print("\n¡Prueba exitosa! Los archivos se crearon correctamente en /data.")

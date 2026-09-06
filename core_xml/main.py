@@ -314,6 +314,7 @@ class GeneradorTopologia:
         vlans_13 = self.generar_vlans_xml(vlans, 13)
         vlans_6 = self.generar_vlans_xml(vlans, 6)
         interfaces_xml = self.generar_interfaces_switch(d)
+        config_ip = self.generar_config_ip_switch(d)
         device_xml = self.templates["device_sw"].format(
             nombre=d["nombre"],
             ip=d.get("ip", ""),
@@ -334,10 +335,36 @@ class GeneradorTopologia:
             vlans_11=vlans_11,
             vlans_13=vlans_13,
             vlans_6=vlans_6,
-            interfaces=interfaces_xml
+            interfaces=interfaces_xml,
+            config_ip=config_ip
         )
         d["device_xml"] = reemplazar_macs_switch(device_xml)
-
+    
+    def generar_config_ip_switch(self, d):
+        ip = d.get("ip")
+        mask = d.get("mask")
+        gw = d.get("gw")
+        if ip and mask and gw:
+            return (
+                "<LINE>interface Vlan1</LINE>\n"
+                f"      <LINE> ip address {ip} {mask}</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                f"      <LINE>ip default-gateway {gw}</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>"
+            )
+        else:
+            return (
+                "<LINE>interface Vlan1</LINE>\n"
+                "      <LINE> no ip address </LINE>\n"
+                "      <LINE> shutdown</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>\n"
+                "      <LINE>!</LINE>"
+            )
     def generar_config_interfaces(self, router):
         texto = ""
         for port, data in (router.get("interfaz") or {}).items():
