@@ -262,6 +262,8 @@ class Operador_nets:
                         if tipo == 'sw' or tipo == 'r':
                             objeto.interfa_vlan[interfaz_aux] = {"modo": "trunk"}
                         else:
+                            if self.dic_objeto_net.get(vecino)  is None:
+                                continue
                             msk,_,gw,_ = self.dic_objeto_net[vecino]
                             key = (gw,msk)
                             vlan = dic_router_ramas[router][interfaz]['vlans'][key]
