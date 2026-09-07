@@ -1,22 +1,22 @@
-> PARA pos.csv(imagen 1):
-segun esta imagen, quiero que generes una lista en formato csv, con formato: <nombre dispositivo>,<pos x>, <pos y> esto es para cisco packet tracer, asi que toma en cuenta eso para asignar las posiciones de modo que no se sobrepongan, al final las posiciones deben formar la misma que de la imagen
+Analiza la imagen adjunta de la topología de red y genera 2 archivos CSV.
 
-> PARA ips.csv(imagen 2) (solo formato por tablas):
-extrae las ips de esta imagen y lo indiques en un csv, formato:
-- <nombre_device>,<ip.>,<msk> (en decimal ej /10).
-La imagen muestra una tabla donde un elemento puede ocupar todo el espacio de una columna desde una fila a otra, significa que este elemento se repite en todos las filas, donde veas una X reemplazas con el numero 67
+> PARA pos.csv:
+segun la imagen, quiero que generes una lista en formato csv, con formato: <nombre dispositivo>,<pos x>,<pos y> esto es para cisco packet tracer, asi que toma en cuenta eso para asignar las posiciones de modo que no se sobrepongan, al final las posiciones deben formar la misma que de la imagen
 
-> PARA conexiones.csv(imagen 1):
+> PARA conexiones.csv:
 segun la imagen quiero que generes un csv que indique las conexiones entre los dispositivos, con el siguiente formato: 
 -  <nombre_device1>:< tipo_device1>,<tipo_cable>,<nombre_device2>:< tipo_device2>
 - Ejemplo: PC1:pc,c,SW2:sw
 los cables que existen son: 
-- cs: cobre segmentado
-- (cruzado) c: cobre
-- s: serial
+- cs: cobre segmentado (líneas punteadas entre switches)
+- c: cobre (línea sólida)
+- s: serial (entre routers)
 no omitas la existencia de 'cobre segmentado' de existir, debes indicarlo.
 los tipo device son:
 - r: Router
 - sw: Switch
 - pc: PC 
 - srv: Servidor
+
+Genera ÚNICAMENTE los bloques de código CSV sin texto explicativo.
+no agreges encabezados ni comentarios dentro de los .csv

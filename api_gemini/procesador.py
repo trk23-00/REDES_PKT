@@ -18,40 +18,43 @@ def procesar_topologia_red(ruta_img_topologia, carpeta_destino="data"):
     img_topologia = Image.open(ruta_img_topologia)
     prompt = """
     Analiza la imagen adjunta de la topología de red y genera 2 archivos CSV.
-    Usa exactamente este formato de encabezados con bloques de código Markdown:
-    ### ARCHIVO: pos.csv
-    <nombre_dispositivo>,<pos_x>,<pos_y>
-    Asigna posiciones estimadas para formar la misma estructura de la imagen en X e Y para Cisco Packet Tracer de modo que no se sobrepongan entre dispositivos y tengan una separacion aceptable. Minimamente deben estar distribuidos desde la posicion (100,100) hacia adelante, sin tener posiciones negativas
-
-    ### ARCHIVO: conexiones.csv
-    <nombre_device1>:<tipo_device1>,<tipo_cable>,<nombre_device2>:<tipo_device2>
-    Tipos de cable:
+    > PARA pos.csv:
+    segun la imagen, quiero que generes una lista en formato csv, con formato: <nombre dispositivo>,<pos x>,<pos y> esto es para cisco packet tracer, asi que toma en cuenta eso para asignar las posiciones de modo que no se sobrepongan, al final las posiciones deben formar la misma que de la imagen
+    las posiciones minimamente deben ser a partir de 100,100 para adelante, no hay posiciones negativas
+    > PARA conexiones.csv:
+    segun la imagen quiero que generes un csv que indique las conexiones entre los dispositivos, con el siguiente formato: 
+    -  <nombre_device1>:< tipo_device1>,<tipo_cable>,<nombre_device2>:< tipo_device2>
+    - Ejemplo: PC1:pc,c,SW2:sw
+    los cables que existen son: 
     - cs: cobre segmentado (líneas punteadas entre switches)
     - c: cobre (línea sólida)
     - s: serial (entre routers)
-    Tipos de dispositivo: r (router), sw (switch o hubs), pc (PC), srv (Servidor).
+    no omitas la existencia de 'cobre segmentado' de existir, debes indicarlo.
+    los tipo device son:
+    - r: Router
+    - sw: Switch
+    - pc: PC 
+    - srv: Servidor
 
     Genera ÚNICAMENTE los bloques de código CSV sin texto explicativo.
     no agreges encabezados ni comentarios dentro de los .csv
+    Para el analisis solo toma en cuenta los tipos de dispositivos mencionados, si ves modems internet u otros no los tomes en cuenta, y su nombre si es que se indica en la imagen, no tomes en cuenta las ips, vlans o interfaces
     """
-
     config = types.GenerateContentConfig(
         temperature=0.1,
         max_output_tokens=16384
     )
-
     modelos_a_probar = [
-        "gemini-3.5-flash-lite",
         "gemini-3.5-flash",
-        "gemini-3.1-flash-lite",
         "gemini-3.6-flash",
         "gemini-3.7-flash",
         "gemini-3.8-flash",
+        "gemini-3.5-flash-lite"
     ]
-
     response = None
-
-    for modelo in modelos_a_probar:
+    indice = 0
+    while True:
+        modelo = modelos_a_probar[indice]
         try:
             print(f"Intentando enviar solicitud a la API con el modelo: {modelo}...")
             response = client.models.generate_content(
@@ -60,30 +63,22 @@ def procesar_topologia_red(ruta_img_topologia, carpeta_destino="data"):
                 config=config
             )
             print(f"Respuesta recibida exitosamente con {modelo}")
-            break  # Éxito: salimos del bucle
-            
+            break  
         except APIError as e:
-            if "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e):
-                print(f"El modelo {modelo} está saturado o no disponible (Error). Probando con el siguiente modelo...")
-                time.sleep(2)
-                continue
+            # Captura errores de saturación (503/429/UNAVAILABLE) o modelo no encontrado (404)
+            if any(err in str(e) for err in ["503", "UNAVAILABLE", "429", "404", "NOT_FOUND"]):
+                print(f"El modelo {modelo} falló o no está disponible ({e}). Avanzando al siguiente...")
             else:
-                raise e
-
-    if not response:
-        raise RuntimeError("Ninguno de los modelos de respaldo pudo completar la solicitud debido a alta demanda.")
-
+                print(f"Error inesperado en {modelo}: {e}. Reintentando con el siguiente...")
+            indice = (indice + 1) % len(modelos_a_probar)
     os.makedirs(carpeta_destino, exist_ok=True)
-
     patron = r"### ARCHIVO:\s*([\w\.-]+)\s*```(?:csv)?\n(.*?)```"
     bloques = re.findall(patron, response.text, re.DOTALL)
-
     if not bloques:
         patron_alt = r"```(?:csv)?\n(.*?)```"
         bloques_raw = re.findall(patron_alt, response.text, re.DOTALL)
         nombres = ["pos.csv", "conexiones.csv"]
         bloques = list(zip(nombres, bloques_raw))
-
     archivos_generados = []
     for nombre_archivo, contenido in bloques:
         ruta_salida = os.path.join(carpeta_destino, nombre_archivo.strip())
@@ -91,11 +86,9 @@ def procesar_topologia_red(ruta_img_topologia, carpeta_destino="data"):
             f.write(contenido.strip() + "\n")
         archivos_generados.append(ruta_salida)
         print(f"Archivo generado: {ruta_salida}")
-
     if hasattr(response, 'usage_metadata'):
         print("\n--- Métricas de la Consulta ---")
         print(f"Tokens Entrada: {response.usage_metadata.prompt_token_count}")
         print(f"Tokens Salida: {response.usage_metadata.candidates_token_count}")
         print(f"Total Tokens: {response.usage_metadata.total_token_count}")
-
     return archivos_generados

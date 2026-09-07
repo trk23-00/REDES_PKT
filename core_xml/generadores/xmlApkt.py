@@ -10,7 +10,7 @@ IV  = bytes([16]  * 16)   # 0x10 × 16
 
 def _load_twofish():
     """Carga libavutil y configura los prototipos de las funciones Twofish."""
-    candidates = ['avutil', 'avutil-60', 'avutil-58', 'avutil-57', 'avutil-56',
+    candidates = ['avutil','avutil-63', 'avutil-62', 'avutil-61', 'avutil-60', 'avutil-58', 'avutil-57', 'avutil-56',
                   'avutil-55', 'avutil-54']
     for name in candidates:
         path = ctypes.util.find_library(name)
@@ -37,8 +37,8 @@ def _load_twofish():
 
     raise RuntimeError(
         "\nNo se encontró libavutil (FFmpeg) en el sistema.\n"
-        "  Windows : descarga FFmpeg de https://ffmpeg.org/download.html\n"
-        "            y agrega la carpeta bin/ al PATH del sistema.\n"
+        "  Windows : descarga el archivo ffmpeg-release-full-shared de https://www.gyan.dev/ffmpeg/builds/\n"
+        "            extrae la descarga y agrega la carpeta /bin al PATH del sistema.\n"
         "  Linux   : sudo apt install ffmpeg\n"
         "  macOS   : brew install ffmpeg\n"
     )
