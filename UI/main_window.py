@@ -1,16 +1,18 @@
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QTabWidget, QFileDialog, QMessageBox, QTableWidget,
-    QTableWidgetItem, QHeaderView, QSpinBox, QComboBox, QCheckBox,
+    QFrame, QTabWidget, QFileDialog, QMessageBox,
+    QTableWidgetItem, QHeaderView, QCheckBox,
     QProgressBar, QScrollArea, QAbstractItemView,
 )
 from UI.theme import QSS
 from core.workflow import TopologySession, parse_ips
+from UI.widgets.scroll_controls import ContainedTable, FocusSpinBox, FocusComboBox
+
+DATA_DIR = Path(__file__).resolve().parents[1] / 'data'
 
 
 def label(text, name=None):
@@ -30,7 +32,7 @@ def button(text, action, primary=False):
 
 
 def table(headers):
-    widget = QTableWidget(0, len(headers))
+    widget = ContainedTable(0, len(headers))
     widget.setHorizontalHeaderLabels(headers)
     widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     widget.verticalHeader().hide()
@@ -74,10 +76,13 @@ class AnalysisWorker(QThread):
     def run(self):
         try:
             from api_gemini.procesador import procesar_topologia_red
-            with TemporaryDirectory(prefix='autopkt-') as folder:
-                procesar_topologia_red(self.path, folder)
-                session = TopologySession()
-                session.load(Path(folder) / 'conexiones.csv', Path(folder) / 'pos.csv')
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            generated = procesar_topologia_red(self.path, str(DATA_DIR))
+            required = {DATA_DIR / 'conexiones.csv', DATA_DIR / 'pos.csv'}
+            if not required.issubset({Path(path).resolve() for path in generated}):
+                raise ValueError('La API no generó conexiones.csv y pos.csv en data. Vuelve a analizar la imagen.')
+            session = TopologySession()
+            session.load(DATA_DIR / 'conexiones.csv', DATA_DIR / 'pos.csv')
             self.ready.emit(session)
         except Exception as error:
             self.failed.emit(str(error))
@@ -183,12 +188,12 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 18, 0, 0)
         layout.setSpacing(16)
-        frame, body = card('Segmentos por rama', 'Elige la cantidad por rama/router. Deja el segmento vacío para generarlo automáticamente o escribe una red CIDR. Cada segmento corresponde a una VLAN.')
+        frame, body = card('Segmentos por rama', 'Elige una cantidad inicial por rama/router: se amplía al introducir IP completas o importar el CSV. Deja el segmento vacío para generarlo automáticamente o escribe una red CIDR. Cada segmento corresponde a una VLAN.')
         self.branch_table = table(['Rama / router', 'Equipos', 'Segmentos'])
         self.branch_table.setMaximumHeight(190)
         body.addWidget(self.branch_table)
         self.segment_table = table(['Rama', 'VLAN', 'Segmento (vacío = automático)'])
-        self.segment_table.itemChanged.connect(self.invalidate)
+        self.segment_table.itemChanged.connect(self.on_configuration_changed)
         body.addWidget(self.segment_table)
         body.addWidget(label('Se reserva la primera IP como puerta de enlace. Los switches usan VLAN 1; los equipos restantes se reparten entre los segmentos.', 'Hint'))
         layout.addWidget(frame)
@@ -198,14 +203,14 @@ class MainWindow(QMainWindow):
         row.addWidget(button('Restablecer IP automáticas', self.clear_ips))
         body.addLayout(row)
         self.ip_table = table(['Dispositivo / interfaz', 'IP manual', 'Máscara o prefijo'])
-        self.ip_table.itemChanged.connect(self.invalidate)
+        self.ip_table.itemChanged.connect(self.on_configuration_changed)
         body.addWidget(self.ip_table)
         layout.addWidget(frame)
-        frame, body = card('Protocolos por router', 'Elige Sin protocolo, OSPF (área 0), RIP v2 o EIGRP (AS 100). Cada router conserva su propia selección.')
+        frame, body = card('Protocolos por router', 'Máximo dos protocolos distintos por topología: OSPF (área 0), RIP v2 o EIGRP (AS 100). Sin protocolo no cuenta para el límite.')
         self.router_table = table(['Router', 'Protocolo'])
         self.router_table.setMaximumHeight(180)
         body.addWidget(self.router_table)
-        body.addWidget(label('Los protocolos distintos no intercambian rutas entre sí automáticamente.', 'Hint'))
+        body.addWidget(label('Al finalizar se detectan los routers de borde entre protocolos y se utiliza su interfaz de borde para la ruta por defecto.', 'Hint'))
         layout.addWidget(frame)
         self.config_status = label('Los cambios se aplican solo después de validar.', 'Hint')
         layout.addWidget(self.config_status)
@@ -300,7 +305,7 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         self.pick_button.setEnabled(True)
         self.analyze_button.setEnabled(True)
-        ready = self.session.base is not None
+        ready = self.session.is_loaded
         self.tabs.setTabEnabled(1, ready)
         self.tabs.setTabEnabled(2, ready)
         self.go_config.setEnabled(ready)
@@ -310,39 +315,36 @@ class MainWindow(QMainWindow):
         self.session = session
         self._updating = True
         self.preview.setMinimumHeight(150)
-        core = session.base
-        self.detected.setRowCount(len(core.dic_device_objeto))
+        self.detected.setRowCount(len(self.session.core.dic_device_objeto))
         kinds = {'r': 'Router', 'sw': 'Switch', 'pc': 'PC', 'srv': 'Servidor'}
-        for row, (name, device) in enumerate(core.dic_device_objeto.items()):
+        for row, (name, device) in enumerate(self.session.core.dic_device_objeto.items()):
             for column, value in enumerate((name, kinds[device.tipo], len(device.interfa_device))):
                 self.detected.setItem(row, column, item(value, False))
         self.detected.show()
         self.go_config.show()
         self.go_export.show()
-        self.branch_table.setRowCount(len(session.branches))
-        for row, branch in enumerate(session.branches):
+        self.branch_table.setRowCount(len(self.session.branches))
+        for row, branch in enumerate(self.session.branches):
             self.branch_table.setItem(row, 0, item(branch.key, False))
             self.branch_table.setItem(row, 1, item(len(branch.switches) + len(branch.hosts), False))
-            count = QSpinBox()
+            count = FocusSpinBox()
             count.setRange(1, 128 if branch.switches else 1)
             count.valueChanged.connect(self.rebuild_segments)
             self.branch_table.setCellWidget(row, 2, count)
         self.segment_table.setRowCount(0)
         self.rebuild_segments()
-        names = []
-        for name, device in core.dic_device_objeto.items():
-            names.extend([f'{name}@{port}' for port in device.interfa_device] if device.tipo == 'r' else [name])
+        names = list(self.session.address_targets())
         self.ip_table.setRowCount(len(names))
         for row, name in enumerate(names):
             self.ip_table.setItem(row, 0, item(name, False))
             self.ip_table.setItem(row, 1, item(''))
             self.ip_table.setItem(row, 2, item(''))
-        self.router_table.setRowCount(len(core.lista_routers))
-        for row, name in enumerate(core.lista_routers):
+        self.router_table.setRowCount(len(self.session.core.lista_routers))
+        for row, name in enumerate(self.session.core.lista_routers):
             self.router_table.setItem(row, 0, item(name, False))
-            combo = QComboBox()
+            combo = FocusComboBox()
             combo.addItems(['Sin protocolo', 'OSPF', 'RIP', 'EIGRP'])
-            combo.currentTextChanged.connect(self.invalidate)
+            combo.currentTextChanged.connect(self.on_configuration_changed)
             self.router_table.setCellWidget(row, 1, combo)
         self._updating = False
         self.invalidate()
@@ -365,12 +367,14 @@ class MainWindow(QMainWindow):
                 for col, value in enumerate((branch.key, str(vlan), previous.get((branch.key, str(vlan)), ''))):
                     self.segment_table.setItem(index, col, item(value, col == 2))
         self._updating = updating
-        self.invalidate()
+        self.on_configuration_changed()
 
-    def invalidate(self, *_):
+    # Edición: invalidar la salida anterior y mostrar comprobaciones locales.
+
+    def invalidate(self):
         if self._updating:
             return
-        self.session.configured = None
+        self.session.invalidate_configuration()
         self.include_config.setChecked(False)
         self.include_config.setEnabled(False)
         self.config_status.setText('Configuración pendiente de validar. Los campos vacíos se completan automáticamente.')
@@ -378,10 +382,55 @@ class MainWindow(QMainWindow):
         self.finish_config.hide()
         self.export_result.setText('')
 
-    def clear_ips(self):
+    def _read_configuration_form(self):
+        plans, overrides, protocols = {}, {}, {}
+        for row in range(self.segment_table.rowCount()):
+            key = self.segment_table.item(row, 0).text()
+            plans.setdefault(key, []).append(self.segment_table.item(row, 2).text())
         for row in range(self.ip_table.rowCount()):
-            self.ip_table.item(row, 1).setText('')
-            self.ip_table.item(row, 2).setText('')
+            name, ip, mask = [self.ip_table.item(row, column).text().strip() for column in range(3)]
+            overrides[name] = (ip, mask)
+        for row in range(self.router_table.rowCount()):
+            protocols[self.router_table.item(row, 0).text()] = self.router_table.cellWidget(row, 1).currentText()
+        return plans, overrides, protocols
+
+    def _sync_segment_counts(self, networks):
+        changed = False
+        for row, branch in enumerate(self.session.branches):
+            count = self.branch_table.cellWidget(row, 2)
+            value = len(networks[branch.key])
+            if count.value() != value:
+                count.blockSignals(True)
+                count.setValue(value)
+                count.blockSignals(False)
+                changed = True
+        if changed:
+            self.rebuild_segments()
+
+    def on_configuration_changed(self, *_):
+        if self._updating or not self.session.is_loaded:
+            return
+        self.invalidate()
+        try:
+            networks = self.session.validate_edit(*self._read_configuration_form())
+            self._updating = True
+            self._sync_segment_counts(networks)
+            self.config_status.setText('Segmentos actualizados según las IP completas. Al finalizar se comprobarán duplicados, solapamientos y capacidad.')
+        except ValueError as error:
+            # Al escribir puede haber campos incompletos: no abrir diálogos.
+            self.config_status.setText(str(error))
+        finally:
+            self._updating = False
+
+    def clear_ips(self):
+        self._updating = True
+        try:
+            for row in range(self.ip_table.rowCount()):
+                self.ip_table.item(row, 1).setText('')
+                self.ip_table.item(row, 2).setText('')
+        finally:
+            self._updating = False
+        self.on_configuration_changed()
 
     def import_ips(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Importar IP', '', 'CSV (*.csv)')
@@ -389,67 +438,71 @@ class MainWindow(QMainWindow):
             return
         try:
             values = parse_ips(path)
+            self.session.validate_address_targets(values)
             indices = {self.ip_table.item(row, 0).text(): row for row in range(self.ip_table.rowCount())}
-            unknown = set(values) - set(indices)
-            if unknown:
-                raise ValueError('Dispositivos desconocidos: ' + ', '.join(sorted(unknown)))
-            for name, (ip, mask) in values.items():
-                row = indices[name]
-                self.ip_table.item(row, 1).setText(ip)
-                self.ip_table.item(row, 2).setText(mask)
-            self.config_status.setText('IP importadas. Revisa los valores y valida el conjunto antes de generar.')
-        except Exception as error:
+            self._updating = True
+            try:
+                for name, (ip, mask) in values.items():
+                    self.ip_table.item(indices[name], 1).setText(ip)
+                    self.ip_table.item(indices[name], 2).setText(mask)
+            finally:
+                self._updating = False
+            self.on_configuration_changed()
+        except ValueError as error:
             self.error(str(error))
+        except OSError as error:
+            self.error(str(error))
+
+    # Confirmación: validación global y aplicación, solo desde el botón.
 
     def apply_config(self):
         try:
-            plans, overrides, protocols = {}, {}, {}
-            for row in range(self.segment_table.rowCount()):
-                key = self.segment_table.item(row, 0).text()
-                plans.setdefault(key, []).append(self.segment_table.item(row, 2).text())
-            for row in range(self.ip_table.rowCount()):
-                name, ip, mask = [self.ip_table.item(row, col).text().strip() for col in range(3)]
-                if bool(ip) != bool(mask):
-                    raise ValueError(f'{name}: introduce IP y máscara juntas o deja ambas vacías.')
-                if ip:
-                    overrides[name] = (ip, mask)
-            for row in range(self.router_table.rowCount()):
-                protocols[self.router_table.item(row, 0).text()] = self.router_table.cellWidget(row, 1).currentText()
-            resolved = self.session.configure(plans, overrides, protocols)
-            self._updating = True
-            for row in range(self.segment_table.rowCount()):
-                key = self.segment_table.item(row, 0).text()
-                vlan = int(self.segment_table.item(row, 1).text())
-                self.segment_table.item(row, 2).setText(resolved[key][vlan - 1])
-            self._updating = False
-            self.result_table.setRowCount(0)
-            for name, device in self.session.configured.dic_device_objeto.items():
-                entries = [(name, device.ip, device.mask)] if device.tipo != 'r' else [(f'{name}@{port}' + (f'.{vlan}' if index else ''), ip, mask) for port, values in device.interfa_vlan.items() for index, (vlan, ip, mask) in enumerate(values)]
-                for entry in entries:
-                    row = self.result_table.rowCount()
-                    self.result_table.insertRow(row)
-                    for column, value in enumerate(entry):
-                        self.result_table.setItem(row, column, item(value or '—', False))
-            self.result_table.show()
-            self.finish_config.show()
+            networks = self.session.configure(*self._read_configuration_form())
+            self._show_configuration_results(networks)
             self.include_config.setEnabled(True)
             self.include_config.setChecked(True)
             self.config_status.setText('Configuración válida. Revisa las IP generadas en la tabla inferior.')
             self.statusBar().showMessage('Segmentos e IP validados. Configuración lista para generar.')
         except Exception as error:
-            self._updating = False
             self.invalidate()
             self.error(str(error))
+
+    def _show_configuration_results(self, networks):
+        self._updating = True
+        try:
+            self._sync_segment_counts(networks)
+            for row in range(self.segment_table.rowCount()):
+                key = self.segment_table.item(row, 0).text()
+                vlan = int(self.segment_table.item(row, 1).text())
+                self.segment_table.item(row, 2).setText(networks[key][vlan - 1])
+            self.result_table.setRowCount(0)
+            for name, device in self.session.core.dic_device_objeto.items():
+                if device.tipo != 'r':
+                    self._add_address_result(name, device.ip, device.mask)
+                    continue
+                for port, addresses in device.interfa_vlan.items():
+                    for index, (vlan, ip, mask) in enumerate(addresses):
+                        target = f'{name}@{port}' + (f'.{vlan}' if index else '')
+                        self._add_address_result(target, ip, mask)
+        finally:
+            self._updating = False
+        self.result_table.show()
+        self.finish_config.show()
+
+    def _add_address_result(self, name, ip, mask):
+        row = self.result_table.rowCount()
+        self.result_table.insertRow(row)
+        for column, value in enumerate((name, ip, mask)):
+            self.result_table.setItem(row, column, item(value or '—', False))
 
     def skip_config(self):
         self.include_config.setChecked(False)
         self.tabs.setCurrentIndex(2)
 
     def update_summary(self):
-        if not self.session.base:
+        if not self.session.is_loaded:
             return
-        core = self.session.base
-        self.summary.setText(f'{len(core.dic_device_objeto)} dispositivos   /   {len(core.dic_edges)} enlaces')
+        self.summary.setText(f'{len(self.session.core.dic_device_objeto)} dispositivos   /   {len(self.session.core.dic_edges)} enlaces')
         self.export_mode.setText('Con IP, VLAN y protocolos validados.' if self.include_config.isChecked() else 'Sin configurar: dispositivos, enlaces y posiciones. Sin asignación de IP ni protocolos.')
 
     def generate(self):

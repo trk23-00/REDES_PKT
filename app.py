@@ -80,7 +80,6 @@ class General_Core:
 
 
     def aplicar_protocolos(self):
-        self.calcular_ramas()
         # pprint.pprint(self.dic_protocolo_aux)
         self.dic_router_protocolo = self.cal_redes.calcular_protocolos(self.dic_protocolo_aux, self.grafo_general.grafo)
         # pprint.pprint(self.dic_router_protocolo)

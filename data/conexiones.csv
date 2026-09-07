@@ -6,6 +6,7 @@ PC4:pc,c,SW2:sw
 SW2:sw,cs,SW3:sw
 PC5:pc,c,SW3:sw
 PC6:pc,c,SW3:sw
+SW1:sw,c,R1:r
 PC7:pc,c,SW4:sw
 PC8:pc,c,SW4:sw
 SW4:sw,cs,SW5:sw
@@ -14,6 +15,7 @@ PC10:pc,c,SW5:sw
 SW5:sw,cs,SW6:sw
 PC11:pc,c,SW6:sw
 PC12:pc,c,SW6:sw
+SW4:sw,c,R2:r
 PC13:pc,c,SW7:sw
 PC14:pc,c,SW7:sw
 SW7:sw,cs,SW8:sw
@@ -22,9 +24,7 @@ PC16:pc,c,SW8:sw
 SW8:sw,cs,SW9:sw
 PC17:pc,c,SW9:sw
 PC18:pc,c,SW9:sw
-R1:r,c,SW1:sw
-R2:r,c,SW4:sw
-R3:r,c,SW7:sw
+SW7:sw,c,R3:r
 R1:r,s,R2:r
 R2:r,s,R3:r
 PC19:pc,c,SW12:sw
@@ -35,6 +35,7 @@ PC22:pc,c,SW11:sw
 SW11:sw,cs,SW10:sw
 PC23:pc,c,SW10:sw
 PC24:pc,c,SW10:sw
+SW10:sw,c,R4:r
 PC25:pc,c,SW15:sw
 PC26:pc,c,SW15:sw
 SW15:sw,cs,SW14:sw
@@ -43,6 +44,7 @@ PC28:pc,c,SW14:sw
 SW14:sw,cs,SW13:sw
 PC29:pc,c,SW13:sw
 PC30:pc,c,SW13:sw
+SW13:sw,c,R5:r
 PC31:pc,c,SW18:sw
 PC32:pc,c,SW18:sw
 SW18:sw,cs,SW17:sw
@@ -51,9 +53,7 @@ PC34:pc,c,SW17:sw
 SW17:sw,cs,SW16:sw
 PC35:pc,c,SW16:sw
 PC36:pc,c,SW16:sw
-R4:r,c,SW10:sw
-R5:r,c,SW13:sw
-R6:r,c,SW16:sw
+SW16:sw,c,R6:r
 R4:r,s,R5:r
 R5:r,s,R6:r
 R2:r,s,R5:r

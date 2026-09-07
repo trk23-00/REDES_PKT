@@ -179,7 +179,7 @@ class Device_router(Device_B):
         lista_nets = []
         dic = {
             "tipo": "ripv2",
-            "rbp": True,
+            "rbp": False,
 
         }
         for lista in self.interfa_vlan.values():
@@ -197,7 +197,7 @@ class Device_router(Device_B):
         lista_nets = []
         dic = {
             "tipo": "eigrp",
-            "rbp": True,
+            "rbp": False,
             "as": 100,
         }
         for lista in self.interfa_vlan.values():

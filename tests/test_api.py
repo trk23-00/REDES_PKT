@@ -2,11 +2,14 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from PIL import Image
 from api_gemini.procesador import procesar_topologia_red
+from UI.main_window import AnalysisWorker, DATA_DIR
+from test_workflow import CONNECTIONS, POSITIONS
 
-RESPONSE = '### ARCHIVO: pos.csv\n```csv\nPC1,100,100\n```\n### ARCHIVO: conexiones.csv\n```csv\nPC1:pc,c,None:None\n```'
+RESPONSE = f'### ARCHIVO: pos.csv\n```csv\n{POSITIONS}\n```\n### ARCHIVO: conexiones.csv\n```csv\n{CONNECTIONS}```'
 
 
 class AdapterTests(unittest.TestCase):
@@ -19,26 +22,37 @@ class AdapterTests(unittest.TestCase):
 
     def test_missing_key(self):
         with patch.dict(os.environ, {}, clear=True), patch('api_gemini.procesador.load_dotenv'), self.assertRaisesRegex(ValueError, 'GEMINI_API_KEY'):
-            procesar_topologia_red(self.image, self.path / 'output')
+            procesar_topologia_red(self.image, self.path / 'data')
 
-    def test_response_validated_before_writing(self):
+    def test_current_api_writes_csv_and_worker_reads_same_data_folder(self):
         client = MagicMock()
-        client.__enter__.return_value.models.generate_content.return_value.text = RESPONSE
-        with patch.dict(os.environ, {'GEMINI_API_KEY': 'fake-test-key', 'GEMINI_MODEL': 'test-model'}), patch('api_gemini.procesador.genai.Client', return_value=client), patch('api_gemini.procesador.load_dotenv'):
-            files = procesar_topologia_red(self.image, self.path / 'output')
-        self.assertEqual({Path(p).name for p in files}, {'conexiones.csv', 'pos.csv'})
-        self.assertTrue(all(Path(p).exists() for p in files))
-        call = client.__enter__.return_value.models.generate_content.call_args
-        self.assertEqual(call.kwargs['model'], 'test-model')
+        def response(**kwargs):
+            kwargs['contents'][0].load()
+            return SimpleNamespace(text=RESPONSE)
+        client.models.generate_content.side_effect = response
+        destination = self.path / 'data'
+        worker = AnalysisWorker(str(self.image))
+        results, errors = [], []
+        worker.ready.connect(results.append)
+        worker.failed.connect(errors.append)
+        with patch.dict(os.environ, {'GEMINI_API_KEY': 'fake-test-key'}), patch('api_gemini.procesador.genai.Client', return_value=client), patch('api_gemini.procesador.load_dotenv'), patch('UI.main_window.DATA_DIR', destination):
+            worker.run()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results[0].base.dic_device_objeto), 7)
+        self.assertEqual({p.name for p in destination.iterdir()}, {'conexiones.csv', 'pos.csv'})
+        self.assertEqual(DATA_DIR, Path(__file__).resolve().parents[1] / 'data')
 
-    def test_malformed_api_output_does_not_overwrite(self):
-        client = MagicMock()
-        client.__enter__.return_value.models.generate_content.return_value.text = RESPONSE.replace('pos.csv', '../unsafe.csv')
-        output = self.path / 'output'
-        output.mkdir()
-        sentinel = output / 'pos.csv'
-        sentinel.write_text('previous', encoding='utf-8')
-        with patch.dict(os.environ, {'GEMINI_API_KEY': 'fake-test-key'}), patch('api_gemini.procesador.genai.Client', return_value=client), patch('api_gemini.procesador.load_dotenv'), self.assertRaises(ValueError):
-            procesar_topologia_red(self.image, output)
-        self.assertEqual(sentinel.read_text(encoding='utf-8'), 'previous')
-        self.assertFalse((self.path / 'unsafe.csv').exists())
+    def test_partial_response_cannot_use_previous_csv(self):
+        destination = self.path / 'data'
+        destination.mkdir()
+        (destination / 'conexiones.csv').write_text(CONNECTIONS, encoding='utf-8')
+        (destination / 'pos.csv').write_text(POSITIONS, encoding='utf-8')
+        worker = AnalysisWorker(str(self.image))
+        results, errors = [], []
+        worker.ready.connect(results.append)
+        worker.failed.connect(errors.append)
+        with patch('UI.main_window.DATA_DIR', destination), patch('api_gemini.procesador.procesar_topologia_red', return_value=[str(destination / 'pos.csv')]):
+            worker.run()
+        self.assertEqual(results, [])
+        self.assertIn('no generó', errors[0])

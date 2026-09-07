@@ -6,9 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from PySide6.QtWidgets import QApplication, QFileDialog
-from PySide6.QtGui import QFontDatabase, QPixmap
+from PySide6.QtGui import QFontDatabase, QPixmap, QWheelEvent
+from PySide6.QtCore import Qt, QPoint, QPointF
 from UI.main_window import MainWindow
 from core.workflow import TopologySession
+from test_workflow import CONNECTIONS, POSITIONS
 
 
 class WindowTests(unittest.TestCase):
@@ -34,7 +36,16 @@ class WindowTests(unittest.TestCase):
 
     def load_sample(self):
         session = TopologySession()
-        session.load('data/conexiones.csv', 'data/pos.csv')
+        folder = Path(self.folder.name)
+        (folder / 'conexiones.csv').write_text(CONNECTIONS, encoding='utf-8')
+        (folder / 'pos.csv').write_text(POSITIONS, encoding='utf-8')
+        session.load(folder / 'conexiones.csv', folder / 'pos.csv')
+        original_generator = session.generator
+        def generator(configured=False):
+            result = original_generator(configured)
+            result.data_dir = folder / 'data'
+            return result
+        session.generator = generator
         self.window.loaded(session)
         self.app.processEvents()
 
@@ -63,9 +74,72 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(self.window.include_config.isEnabled())
         self.window.apply_config()
         self.assertEqual(self.errors, [])
-        with patch.object(QFileDialog, 'getExistingDirectory', return_value=self.folder.name):
+        export_dir = Path(self.folder.name) / 'export'
+        with patch.object(QFileDialog, 'getExistingDirectory', return_value=str(export_dir)):
             self.window.export_md()
-        self.assertEqual({p.name for p in Path(self.folder.name).iterdir()}, {'cisco.md', 'pcs.md'})
+        self.assertEqual({p.name for p in export_dir.iterdir()}, {'cisco.md', 'pcs.md'})
+
+    def test_manual_ips_expand_segment_count_and_table(self):
+        self.load_sample()
+        for row in range(self.window.ip_table.rowCount()):
+            name = self.window.ip_table.item(row, 0).text()
+            if name in ('PC1', 'PC2'):
+                ip = '192.168.10.10' if name == 'PC1' else '192.168.20.10'
+                self.window.ip_table.item(row, 1).setText(ip)
+                self.window.ip_table.item(row, 2).setText('24')
+        self.window.apply_config()
+        self.assertEqual(self.errors, [])
+        self.assertEqual(self.window.branch_table.cellWidget(0, 2).value(), 2)
+        self.assertEqual(self.window.segment_table.rowCount(), 3)
+        self.assertEqual(self.window.segment_table.item(1, 2).text(), '192.168.20.0/24')
+        self.assertTrue(self.window.include_config.isChecked())
+        self.window.apply_config()
+        self.assertEqual(self.errors, [])
+
+    def wheel(self, target, delta):
+        position = QPoint(10, 10)
+        event = QWheelEvent(QPointF(position), QPointF(target.mapToGlobal(position)),
+                            QPoint(), QPoint(0, delta), Qt.NoButton, Qt.NoModifier,
+                            Qt.NoScrollPhase, False)
+        QApplication.sendEvent(target, event)
+        return event
+
+    def test_table_scroll_stays_inside_at_both_boundaries(self):
+        self.load_sample()
+        self.window.tabs.setCurrentIndex(1)
+        table = self.window.branch_table
+        table.setRowCount(60)
+        self.app.processEvents()
+        outer = self.window.tabs.widget(1).verticalScrollBar()
+        inner = table.verticalScrollBar()
+        self.assertGreater(inner.maximum(), 0)
+        for boundary, delta in ((inner.maximum(), -120), (0, 120)):
+            outer.setValue(outer.maximum() // 2)
+            previous = outer.value()
+            inner.setValue(boundary)
+            for target in (table.viewport(), inner):
+                event = self.wheel(target, delta)
+                self.assertTrue(event.isAccepted())
+                self.assertEqual(outer.value(), previous)
+                self.assertEqual(inner.value(), boundary)
+        inner.setValue(0)
+        self.wheel(table.viewport(), -120)
+        self.assertGreater(inner.value(), 0)
+        outer.setValue(0)
+        self.wheel(self.window.tabs.widget(1).viewport(), -120)
+        self.assertGreater(outer.value(), 0)
+
+    def test_wheel_does_not_edit_unfocused_controls(self):
+        self.load_sample()
+        self.window.tabs.setCurrentIndex(1)
+        self.window.tabs.setFocus()
+        for control in (self.window.branch_table.cellWidget(0, 2), self.window.router_table.cellWidget(0, 1)):
+            self.assertFalse(control.hasFocus())
+            self.assertEqual(control.focusPolicy(), Qt.StrongFocus)
+            event = self.wheel(control, 120)
+            self.assertFalse(event.isAccepted())
+        self.assertEqual(self.window.branch_table.cellWidget(0, 2).value(), 1)
+        self.assertEqual(self.window.router_table.cellWidget(0, 1).currentText(), 'Sin protocolo')
 
     def test_invalid_inputs_block_configuration(self):
         self.load_sample()

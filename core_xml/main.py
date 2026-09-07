@@ -1,13 +1,14 @@
 import re
 import random
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from core_xml.generadores.generarMac import generar_mac, mac_a_ipv6_link_local
 from core_xml.generadores.generarPartialDuuid import generar_partial_duid
 from core_xml.generadores.generarRefId import generar_save_ref_id
 from core_xml.generadores.generarUuid import generar_uuid
 from core_xml.generadores.reemplazarMacSwitch import reemplazar_macs_switch
-from core_xml.generadores.xml2pkt import xml_a_pkt
+from core_xml.generadores.xmlApkt import encriptar as xml_a_pkt
+
+import pprint
 
 def safe(val):
     return "" if val is None else val
@@ -18,6 +19,7 @@ class GeneradorTopologia:
         self.datos = datos
         self.enrutamiento = enrutamiento
         self.ruta = ruta
+        self.data_dir = Path(ruta) / 'data'
 
         self.templates = self.cargar_templates()
         self.dispositivos = {}
@@ -435,7 +437,7 @@ class GeneradorTopologia:
         # =====================
         # RIP
         # =====================
-        if tipo in ["rip", "ripv2"]:
+        if tipo == "ripv2":
             texto += "      <LINE>router rip</LINE>\n"
             if tipo == "ripv2":
                 texto += "      <LINE> version 2</LINE>\n"
@@ -563,13 +565,15 @@ class GeneradorTopologia:
             nodes_rack=xml_nodes_rack,
             scenarios="\n".join(scenarios)
         )
+        
         destination = Path(output_path or f"{self.ruta}/topologia.pkt")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory() as folder:
-            xml_path = Path(folder) / 'topologia.xml'
-            xml_path.write_text(xml, encoding='utf-8')
-            if not xml_a_pkt(str(xml_path), str(destination)):
-                raise OSError('No se pudo guardar el archivo PKT.')
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        xml_path = self.data_dir / 'topologia.xml'
+        xml_path.write_text(xml, encoding='utf-8')
+        if not xml_a_pkt(str(xml_path), str(destination)):
+            raise OSError('No se pudo guardar el archivo PKT. El XML se conserva en data/topologia.xml.')
         return str(destination)
 
 # datos = {

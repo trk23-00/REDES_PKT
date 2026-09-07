@@ -18,10 +18,9 @@ Crea `.env` en la raíz (está excluido de Git):
 
 ```dotenv
 GEMINI_API_KEY=tu_clave
-GEMINI_MODEL=gemini-2.5-flash
 ```
 
-`GEMINI_MODEL` es opcional y permite seleccionar un modelo disponible en tu cuenta. La API recibe la imagen al pulsar **Analizar imagen**, con un tiempo de espera de 90 segundos por solicitud. Un fallo de autenticación, disponibilidad o formato se muestra en la interfaz y permite reintentar. No hay llamadas a la API durante las pruebas automatizadas.
+La API recibe la imagen al pulsar **Analizar imagen**. Se utiliza la implementación actual de `api_gemini/procesador.py`, incluida su lista de modelos y reintentos. Un fallo de autenticación, disponibilidad o formato se muestra en la interfaz y permite reintentar. No hay llamadas reales a la API durante las pruebas automatizadas.
 
 Adaptador basado en el [SDK oficial de Google Gen AI](https://github.com/googleapis/python-genai) y la [referencia generateContent](https://ai.google.dev/api/generate-content).
 
@@ -35,15 +34,19 @@ Puedes saltar directamente de la primera pestaña a la tercera. La casilla **Inc
 
 Seleccionar otra imagen reinicia la sesión. Editar segmentos, IP o protocolos invalida la configuración anterior; hay que validarla otra vez para incluirla en la salida. Los errores de validación no aplican cambios parciales.
 
+Los CSV se generan en `data/conexiones.csv` y `data/pos.csv`, dentro del proyecto, y se leen desde esos mismos archivos. Se conservan después del análisis. Antes de generar el PKT se escribe `data/topologia.xml`, que también se conserva, incluso si falla la conversión. Cada ejecución sustituye los archivos correspondientes; el destino del PKT sigue siendo el elegido en el diálogo de guardado. Estas rutas no dependen de la carpeta desde la que se inicia la aplicación.
+
+El desplazamiento sobre una tabla queda dentro de ella, también al llegar al principio o al final. Para desplazar la página completa, coloca el puntero fuera de la tabla. La rueda solo cambia cantidades o protocolos cuando el control tiene el foco (clic o Tab).
+
 ## Segmentos e IP
 
-- Cada rama/router tiene una cantidad de segmentos editable. Los campos CIDR vacíos reciben redes automáticas; los no vacíos se respetan.
+- Cada rama/router tiene una cantidad inicial de segmentos editable. Al validar, las redes de las IP manuales o importadas amplían automáticamente esa cantidad si hace falta. Los campos CIDR vacíos reciben redes inferidas o automáticas; las redes escritas se conservan.
 - Las redes manuales deben ser direcciones de red, por ejemplo `192.168.10.0/24`, no `192.168.10.25/24`.
 - La asignación automática utiliza subredes `/24` libres en `10.0.0.0/8`; los enlaces entre routers usan `/30`. Primero se reservan todas las redes manuales e importadas, incluidos los enlaces entre routers.
 - Se rechazan segmentos repetidos o superpuestos, IP duplicadas, máscaras inválidas, direcciones de red/broadcast, conflictos con la puerta de enlace y segmentos sin capacidad suficiente.
-- El primer segmento corresponde a VLAN 1 y contiene la administración de los switches. Los segmentos siguientes corresponden a VLAN 2, 3, etc. Los equipos finales se reparten de forma circular entre ellos; una IP manual/importada determina el segmento del equipo.
+- El primer segmento corresponde a VLAN 1 y contiene la administración de los switches. Si se proporcionan IP de administración o de la interfaz física del router, su red se coloca primero automáticamente; dichas IP deben compartir red. Los segmentos siguientes corresponden a VLAN 2, 3, etc. Los equipos finales se reparten de forma circular entre ellos; una IP manual/importada determina el segmento del equipo.
 - La primera IP de cada segmento se reserva para la puerta de enlace del router. Se puede cambiar la de la interfaz física mediante una IP manual o importada de esa interfaz.
-- Las IP importadas pueden introducir segmentos nuevos en los campos automáticos disponibles. Si no hay espacio, aumenta la cantidad de segmentos o modifica los CIDR. Una IP importada no reemplaza silenciosamente una red manual.
+- Las IP pueden ser parciales y combinarse entre CSV e interfaz: solo se agrupan las proporcionadas, y las restantes se completan automáticamente. Por ejemplo, si se eligió un segmento pero PC1 usa `192.168.10.10/24` y PC2 usa `192.168.20.10/24` en la misma rama, se crean dos segmentos y se actualizan la cantidad y la tabla al validar. No es necesario ajustar previamente el contador. Se mantienen los límites físicos, el máximo de 128 segmentos por rama y la validación de solapamientos.
 - Las LAN sin router también se admiten y no reciben una puerta de enlace ficticia.
 
 CSV de IP, con encabezado opcional, UTF-8, máscara decimal o prefijo:
@@ -63,7 +66,7 @@ Cada router admite **Sin protocolo**, **OSPF** (proceso 1, área 0), **RIP v2** 
 
 La detección de ramas reutiliza el recorrido del grafo existente. Una LAN compartida por varias interfaces/routers puede generarse sin configuración, pero la configuración automática la rechaza con un mensaje explícito: resolverla requiere definir el diseño de capa 2 y las puertas de enlace redundantes, que no se infieren de la imagen. Varias VLAN requieren al menos un switch. El generador mantiene sus límites de puertos y rechaza topologías que los superan.
 
-Los nombres que devuelve la API se restringen a letras ASCII, números, guion y guion bajo, empezando por letra. No se permiten archivos arbitrarios ni instrucciones de la imagen como respuesta ejecutable.
+Al cargar la topología, los nombres que devuelve la API se validan como letras ASCII, números, guion y guion bajo, empezando por letra. La aplicación comprueba que la llamada haya generado ambos CSV esperados antes de leerlos, para no combinar una respuesta incompleta con datos antiguos.
 
 ## Verificación
 

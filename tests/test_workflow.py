@@ -1,12 +1,12 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 import struct
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from core.workflow import TopologySession, parse_ips, validate_topology
-from api_gemini.procesador import parse_response
 from core_xml.generadores.xml2pkt import xor_data
 
 CONNECTIONS = '''R1:r,c,SW1:sw
@@ -99,10 +99,34 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'suficientes'):
             self.session.configure(self.plans)
 
-    def test_out_of_segment_import(self):
+    def test_new_network_extends_manual_segments(self):
         self.plans[self.keys[0]] = ['192.168.1.0/24']
-        with self.assertRaisesRegex(ValueError, 'no está entre'):
-            self.session.configure(self.plans, {'PC1': ('192.168.2.2', '24')})
+        result = self.session.configure(self.plans, {'PC1': ('192.168.2.2', '24')})
+        self.assertEqual(result[self.keys[0]], ['192.168.1.0/24', '192.168.2.0/24'])
+
+    def test_partial_ips_infer_multiple_segments_from_one_slot(self):
+        result = self.session.configure(self.plans, {
+            'PC1': ('192.168.10.10', '24'), 'PC2': ('192.168.20.10', '24')})
+        self.assertEqual(result[self.keys[0]], ['192.168.10.0/24', '192.168.20.0/24'])
+        self.assertEqual(len(result[self.keys[1]]), 1)
+        self.assertIsNotNone(self.session.configured.dic_device_objeto['PC3'].ip)
+
+    def test_partial_csv_infers_segments(self):
+        path = self.path / 'ips.csv'
+        path.write_text('PC1,192.168.10.10,24\nPC2,192.168.20.10,24\n', encoding='utf-8')
+        result = self.session.configure(self.plans, parse_ips(path))
+        self.assertEqual(len(result[self.keys[0]]), 2)
+
+    def test_inferred_networks_still_reject_overlap(self):
+        with self.assertRaisesRegex(ValueError, 'superpuestos'):
+            self.session.configure(self.plans, {
+                'PC1': ('192.168.10.10', '24'), 'PC2': ('192.168.10.150', '25')})
+
+    def test_inferred_management_network_becomes_vlan_one(self):
+        result = self.session.configure(self.plans, {
+            'SW1': ('192.168.20.2', '24'), 'PC1': ('192.168.10.10', '24')})
+        self.assertEqual(result[self.keys[0]], ['192.168.20.0/24', '192.168.10.0/24'])
+        self.assertEqual(self.session.configured.dic_device_objeto['SW1'].gw, '192.168.20.1')
 
     def test_imported_transit_and_gateway(self):
         core = self.session.base
@@ -160,9 +184,17 @@ class WorkflowTests(unittest.TestCase):
     def test_pkt_roundtrip_and_fresh_generation(self):
         bare = self.path / 'bare.pkt'
         configured = self.path / 'configured.pkt'
-        self.session.generator(False).generar(bare)
+        generator = self.session.generator(False)
+        generator.data_dir = self.path / 'data'
+        generator.generar(bare)
+        xml_path = self.path / 'data' / 'topologia.xml'
+        self.assertTrue(xml_path.is_file())
+        previous_xml = xml_path.read_bytes()
         self.session.configure(self.plans, protocols={'R1': 'OSPF'})
-        self.session.generator(True).generar(configured)
+        generator = self.session.generator(True)
+        generator.data_dir = self.path / 'data'
+        generator.generar(configured)
+        self.assertNotEqual(xml_path.read_bytes(), previous_xml)
         def decode(path):
             payload = path.read_bytes()
             payload = xor_data(payload, len(payload))
@@ -171,6 +203,7 @@ class WorkflowTests(unittest.TestCase):
             return ET.fromstring(xml), xml.decode('utf-8')
         bare_tree, bare_xml = decode(bare)
         _, configured_xml = decode(configured)
+        self.assertEqual(xml_path.read_bytes(), configured_xml.encode('utf-8'))
         self.assertNotIn('router ospf', bare_xml)
         self.assertIn('router ospf', configured_xml)
         self.assertNotIn('<LINE> ip address  </LINE>', bare_xml)
@@ -185,12 +218,19 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_ips(path)
 
-    def test_api_parser_exact_files(self):
-        response = f'### ARCHIVO: pos.csv\n```csv\n{POSITIONS}\n```\n### ARCHIVO: conexiones.csv\n```csv\n{CONNECTIONS}```'
-        self.assertEqual(set(parse_response(response)), {'pos.csv', 'conexiones.csv'})
-        for broken in [response.replace('pos.csv', '../bad.csv'), response + '\n### ARCHIVO: pos.csv\n```csv\nbad\n```', '```csv\nempty\n```', response.replace('PC1,300,100', 'UNKNOWN,300,100')]:
-            with self.subTest(response=broken[:70]), self.assertRaises(ValueError):
-                parse_response(broken)
+    def test_xml_remains_available_when_pkt_conversion_fails(self):
+        generator = self.session.generator(False)
+        self.assertEqual(generator.data_dir, Path(self.session.base.ruta) / 'data')
+        generator.data_dir = self.path / 'data'
+        with patch('core_xml.main.xml_a_pkt', return_value=False), self.assertRaises(OSError):
+            generator.generar(self.path / 'failed.pkt')
+        xml_path = generator.data_dir / 'topologia.xml'
+        self.assertTrue(xml_path.exists())
+        ET.parse(xml_path)
+
+    def test_loading_keeps_csv_files(self):
+        self.assertEqual((self.path / 'conexiones.csv').read_text(encoding='utf-8'), CONNECTIONS)
+        self.assertEqual((self.path / 'pos.csv').read_text(encoding='utf-8'), POSITIONS)
 
     def test_malformed_and_unsafe_topology(self):
         for c, p in [('R1:r,c,R1:r', 'R1,100,100'), ('R1:r,c,SW1:sw\nR1:r,c,SW1:sw', 'R1,100,100\nSW1,200,100'), ('R1:r,c,SW<1:sw', ''), (CONNECTIONS, POSITIONS.replace('100,100', '-1,100', 1))]:

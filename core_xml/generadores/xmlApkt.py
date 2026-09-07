@@ -142,7 +142,7 @@ def _final_obfuscation(data: bytes) -> bytes:
         out[n - 1 - i] = b ^ ((n - i * n) & 0xFF)
     return bytes(out)
 
-def encriptar(ruta_origen: str, ruta_salida: str) -> None:
+def encriptar(ruta_origen: str, ruta_salida: str) -> bool:
     """
     Convierte un archivo XML al formato binario PKT/PKA de Packet Tracer.
 
@@ -160,6 +160,7 @@ def encriptar(ruta_origen: str, ruta_salida: str) -> None:
 
     with open(ruta_salida, 'wb') as f:
         f.write(pkt)
+    return True
 
 def main():
     parser = argparse.ArgumentParser(
