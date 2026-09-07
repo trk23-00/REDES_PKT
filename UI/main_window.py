@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTabWidget, QFileDialog, QMessageBox,
     QTableWidgetItem, QHeaderView, QCheckBox,
-    QProgressBar, QScrollArea, QAbstractItemView,
+    QProgressBar, QScrollArea, QAbstractItemView, QLayout,
 )
 from UI.theme import QSS
 from core.workflow import TopologySession, parse_ips
@@ -36,10 +36,20 @@ def table(headers):
     widget.setHorizontalHeaderLabels(headers)
     widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
     widget.verticalHeader().hide()
-    widget.verticalHeader().setDefaultSectionSize(40)
+    widget.verticalHeader().setDefaultSectionSize(54)
     widget.setAlternatingRowColors(True)
     widget.setMinimumHeight(150)
     return widget
+
+
+def scrollable_page(page):
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    page.layout().setSizeConstraint(QLayout.SetMinAndMaxSize)
+    scroll.setWidget(page)
+    return scroll
 
 
 def item(value, editable=True):
@@ -179,20 +189,21 @@ class MainWindow(QMainWindow):
         next_row.addWidget(self.go_export)
         body.addLayout(next_row)
         layout.addWidget(frame, 1)
-        return page
+        return scrollable_page(page)
 
     def config_page(self):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 18, 0, 0)
-        layout.setSpacing(16)
+        layout.setSpacing(22)
         frame, body = card('Segmentos por rama', 'Elige una cantidad inicial por rama/router: se amplía al introducir IP completas o importar el CSV. Deja el segmento vacío para generarlo automáticamente o escribe una red CIDR. Cada segmento corresponde a una VLAN.')
         self.branch_table = table(['Rama / router', 'Equipos', 'Segmentos'])
-        self.branch_table.setMaximumHeight(190)
+        self.branch_table.setMinimumHeight(250)
+        self.branch_table.setMaximumHeight(340)
         body.addWidget(self.branch_table)
         self.segment_table = table(['Rama', 'VLAN', 'Segmento (vacío = automático)'])
+        self.segment_table.setMinimumHeight(240)
+        self.segment_table.setMaximumHeight(340)
         self.segment_table.itemChanged.connect(self.on_configuration_changed)
         body.addWidget(self.segment_table)
         body.addWidget(label('Se reserva la primera IP como puerta de enlace. Los switches usan VLAN 1; los equipos restantes se reparten entre los segmentos.', 'Hint'))
@@ -203,12 +214,15 @@ class MainWindow(QMainWindow):
         row.addWidget(button('Restablecer IP automáticas', self.clear_ips))
         body.addLayout(row)
         self.ip_table = table(['Dispositivo / interfaz', 'IP manual', 'Máscara o prefijo'])
+        self.ip_table.setMinimumHeight(280)
+        self.ip_table.setMaximumHeight(380)
         self.ip_table.itemChanged.connect(self.on_configuration_changed)
         body.addWidget(self.ip_table)
         layout.addWidget(frame)
         frame, body = card('Protocolos por router', 'Máximo dos protocolos distintos por topología: OSPF (área 0), RIP v2 o EIGRP (AS 100). Sin protocolo no cuenta para el límite.')
         self.router_table = table(['Router', 'Protocolo'])
-        self.router_table.setMaximumHeight(180)
+        self.router_table.setMinimumHeight(240)
+        self.router_table.setMaximumHeight(340)
         body.addWidget(self.router_table)
         body.addWidget(label('Al finalizar se detectan los routers de borde entre protocolos y se utiliza su interfaz de borde para la ruta por defecto.', 'Hint'))
         layout.addWidget(frame)
@@ -219,14 +233,15 @@ class MainWindow(QMainWindow):
         row.addWidget(button('Continuar sin configurar →', self.skip_config))
         layout.addLayout(row)
         self.result_table = table(['Dispositivo / interfaz', 'IP', 'Máscara'])
+        self.result_table.setMinimumHeight(280)
+        self.result_table.setMaximumHeight(380)
         self.result_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.result_table.hide()
         layout.addWidget(self.result_table)
         self.finish_config = button('Crear archivo con esta configuración →', lambda: self.tabs.setCurrentIndex(2), True)
         self.finish_config.hide()
         layout.addWidget(self.finish_config)
-        scroll.setWidget(page)
-        return scroll
+        return scrollable_page(page)
 
     def export_page(self):
         page = QWidget()
@@ -253,7 +268,7 @@ class MainWindow(QMainWindow):
         body.addWidget(self.export_result)
         layout.addWidget(frame)
         layout.addStretch()
-        return page
+        return scrollable_page(page)
 
     def pick_image(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Seleccionar topología', '', 'Imágenes (*.png *.jpg *.jpeg *.webp)')

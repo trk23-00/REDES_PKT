@@ -22,10 +22,22 @@ QTabBar::tab:selected { background: #d6ebe4; color: #216b59; }
 QTabBar::tab:disabled { color: #a6adaa; }
 QLineEdit, QSpinBox, QComboBox { background: white; border: 1px solid #cedbd5; border-radius: 7px; padding: 7px; min-height: 20px; selection-background-color: #acd8c8; }
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #4fae9c; }
+QSpinBox#SegmentCount { padding: 0px 48px 0px 10px; min-height: 48px; }
+QToolButton#SegmentStep { background: #e4f0eb; color: #216b59; border: 1px solid #c5dacf; border-radius: 4px; padding: 0px; }
+QToolButton#SegmentStep:hover { background: #c9e5d9; }
+QToolButton#SegmentStep:pressed { background: #a9d5c3; }
+QToolButton#SegmentStep:disabled { color: #9caaa3; background: #f0f3f1; }
 QTableWidget { background: white; alternate-background-color: #f6f8f7; border: 1px solid #dfe7e2; border-radius: 8px; gridline-color: #edf1ef; selection-background-color: #d6ebe4; selection-color: #253d34; }
 QHeaderView::section { background: #edf3ef; border: none; padding: 9px; color: #496156; font-weight: 600; }
 QCheckBox { spacing: 8px; padding: 4px; }
 QScrollArea { border: none; background: transparent; }
+QScrollBar:vertical { background: #eaf0ec; width: 14px; margin: 0px; border-radius: 7px; }
+QScrollBar:horizontal { background: #eaf0ec; height: 14px; margin: 0px; border-radius: 7px; }
+QScrollBar::handle:vertical { background: #a2b9af; min-height: 36px; border-radius: 7px; }
+QScrollBar::handle:horizontal { background: #a2b9af; min-width: 36px; border-radius: 7px; }
+QScrollBar::handle:hover { background: #70a58f; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QProgressBar { background: #e1e9e5; border: none; border-radius: 4px; max-height: 8px; }
 QProgressBar::chunk { background: #4fae9c; border-radius: 4px; }
 QStatusBar { background: #e8eeea; color: #52695d; }
